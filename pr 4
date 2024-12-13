@@ -1,0 +1,96 @@
+.#!/bin/bash
+
+# Функция для вывода справки
+show_help() {
+    echo "Использование: $0 [OPTIONS]"
+    echo "OPTIONS:"
+    echo "  -u, --users          Вывести перечень пользователей и их домашних директорий."
+    echo "  -p, --processes      Вывести перечень запущенных процессов."
+    echo "  -h, --help           Показать справку."
+    echo "  -l PATH, --log PATH  Записать вывод в файл по заданному пути."
+    echo "  -e PATH, --errors PATH Записать ошибки в файл по заданному пути."
+}
+
+# Функция для вывода пользователей
+list_users() {
+    if [[ -n "$log_file" ]]; then
+        exec > "$log_file"
+    fi
+
+    awk -F: '$3 >= 1000 {print $1 "\t" $6}' /etc/passwd | sort || {
+        echo "Ошибка при получении списка пользователей." >&2
+        log_error "Ошибка при получении списка пользователей."
+    }
+}
+
+# Функция для вывода процессов
+list_processes() {
+    if [[ -n "$log_file" ]]; then
+        exec > "$log_file"
+    fi
+
+    ps aux --sort pid || {
+        echo "Ошибка при получении списка процессов." >&2
+        log_error "Ошибка при получении списка процессов."
+    }
+}
+
+# Функция для записи ошибок в лог-файл
+log_error() {
+    local message="$1"
+    if [[ -n "$error_file" ]]; then
+        echo "$message" >> "$error_file"
+    fi
+}
+
+# Основной блок программы
+log_file=""
+error_file=""
+
+while getopts ":upl:he:-:" opt; do
+    case $opt in
+        u) action="users" ;;
+        p) action="processes" ;;
+        l) log_file="$OPTARG" ;;
+        e) error_file="$OPTARG" ;;
+        h) show_help; exit 0 ;;
+        -)
+            case "${OPTARG}" in
+                users) action="users" ;;
+                processes) action="processes" ;;
+                help) show_help; exit 0 ;;
+                log) log_file="${!OPTIND}"; OPTIND=$((OPTIND + 1)) ;;
+                errors) error_file="${!OPTIND}"; OPTIND=$((OPTIND + 1)) ;;
+                *) 
+                    echo "Неизвестный параметр --${OPTARG}" >&2
+                    log_error "Неизвестный параметр --${OPTARG}"
+                    exit 1 
+                    ;;
+            esac ;;
+        ?) 
+            echo "Неизвестный параметр -$OPTARG" >&2
+            log_error "Неизвестный параметр -$OPTARG"
+            exit 1 
+            ;;
+        :) 
+            echo "Параметр -$OPTARG требует аргумент." >&2
+            log_error "Параметр -$OPTARG требует аргумент."
+            exit 1 
+            ;;
+    esac
+done
+
+# Проверка на наличие действия
+if [[ -z "$action" ]]; then
+    echo "Ошибка, действие не задано." >&2
+    log_error "Ошибка, действие не задано."
+    exit 1
+fi
+
+# Выполнение соответствующего действия
+case $action in
+    users) list_users ;;
+    processes) list_processes ;;
+esac
+
+exit 0
